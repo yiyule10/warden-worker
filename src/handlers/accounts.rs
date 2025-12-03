@@ -20,6 +20,27 @@ use crate::{
     },
 };
 
+const SUPPORTED_KDF_TYPE: i32 = 0; // PBKDF2
+const MIN_PBKDF2_ITERATIONS: i32 = 100_000;
+const DEFAULT_PBKDF2_ITERATIONS: i32 = 600_000;
+
+fn ensure_supported_kdf(kdf_type: i32, iterations: i32) -> Result<(), AppError> {
+    if kdf_type != SUPPORTED_KDF_TYPE {
+        return Err(AppError::BadRequest(
+            "Only the PBKDF2 key derivation function is supported".to_string(),
+        ));
+    }
+
+    if iterations < MIN_PBKDF2_ITERATIONS {
+        return Err(AppError::BadRequest(format!(
+            "PBKDF2 iterations must be at least {}",
+            MIN_PBKDF2_ITERATIONS
+        )));
+    }
+
+    Ok(())
+}
+
 #[worker::send]
 pub async fn prelogin(
     State(env): State<Arc<Env>>,
@@ -30,16 +51,27 @@ pub async fn prelogin(
         .ok_or_else(|| AppError::BadRequest("Missing email".to_string()))?;
     let db = db::get_db(&env)?;
 
-    let stmt = db.prepare("SELECT kdf_iterations FROM users WHERE email = ?1");
+    let stmt = db.prepare("SELECT kdf_type, kdf_iterations FROM users WHERE email = ?1");
     let query = stmt.bind(&[email.into()])?;
-    let kdf_iterations: Option<i32> = query
-        .first(Some("kdf_iterations"))
-        .await
-        .map_err(|_| AppError::Database)?;
+    let row: Option<Value> = query.first(None).await.map_err(|_| AppError::Database)?;
+
+    let (kdf_type, kdf_iterations) = if let Some(row) = row {
+        let kdf_type = row
+            .get("kdf_type")
+            .and_then(|value| value.as_i64())
+            .map(|value| value as i32);
+        let kdf_iterations = row
+            .get("kdf_iterations")
+            .and_then(|value| value.as_i64())
+            .map(|value| value as i32);
+        (kdf_type, kdf_iterations)
+    } else {
+        (None, None)
+    };
 
     Ok(Json(PreloginResponse {
-        kdf: 0, // PBKDF2
-        kdf_iterations: kdf_iterations.unwrap_or(600_000),
+        kdf: kdf_type.unwrap_or(SUPPORTED_KDF_TYPE),
+        kdf_iterations: kdf_iterations.unwrap_or(DEFAULT_PBKDF2_ITERATIONS),
     }))
 }
 
@@ -61,6 +93,8 @@ pub async fn register(
     {
         return Err(AppError::Unauthorized("Not allowed to signup".to_string()));
     }
+
+    ensure_supported_kdf(payload.kdf, payload.kdf_iterations)?;
 
     // Generate salt and hash the password with server-side PBKDF2
     let password_salt = generate_salt()?;
@@ -89,8 +123,8 @@ pub async fn register(
 
     query!(
         &db,
-        "INSERT INTO users (id, name, email, master_password_hash, master_password_hint, password_salt, key, private_key, public_key, kdf_iterations, security_stamp, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        "INSERT INTO users (id, name, email, master_password_hash, master_password_hint, password_salt, key, private_key, public_key, kdf_type, kdf_iterations, security_stamp, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
          user.id,
          user.name,
          user.email,
@@ -100,6 +134,7 @@ pub async fn register(
          user.key,
          user.private_key,
          user.public_key,
+         user.kdf_type,
          user.kdf_iterations,
          user.security_stamp,
          user.created_at,
@@ -292,6 +327,9 @@ pub async fn post_rotatekey(
         ));
     }
 
+    // Only PBKDF2 is supported since Argon2-specific columns are not present in our schema.
+    ensure_supported_kdf(unlock_data.kdf_type, unlock_data.kdf_iterations)?;
+
     // Validate data integrity using D1 batch operations
     // Step 1: Ensure all personal ciphers have id (required for key rotation)
     // Step 2: Count check - ensure request has exactly the same number of items as DB
@@ -453,11 +491,13 @@ pub async fn post_rotatekey(
     // Update user record with new keys and password
     query!(
         &db,
-        "UPDATE users SET master_password_hash = ?1, password_salt = ?2, key = ?3, private_key = ?4, security_stamp = ?5, updated_at = ?6 WHERE id = ?7",
+        "UPDATE users SET master_password_hash = ?1, password_salt = ?2, key = ?3, private_key = ?4, kdf_type = ?5, kdf_iterations = ?6, security_stamp = ?7, updated_at = ?8 WHERE id = ?9",
         new_hashed_password,
         new_salt,
         unlock_data.master_key_encrypted_user_key,
         payload.account_keys.user_key_encrypted_account_private_key,
+        unlock_data.kdf_type,
+        unlock_data.kdf_iterations,
         new_security_stamp,
         now,
         user_id
