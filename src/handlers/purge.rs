@@ -4,8 +4,8 @@
 //! soft-deleted (marked with deleted_at) for longer than the configured
 //! retention period.
 
-use chrono::{Duration, Utc};
 use crate::handlers::attachments;
+use chrono::{Duration, Utc};
 use std::collections::HashSet;
 use worker::{query, D1Database, Env};
 

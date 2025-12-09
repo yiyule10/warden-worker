@@ -96,8 +96,7 @@ pub async fn create_cipher(
     .run()
     .await?;
 
-    attachments::hydrate_cipher_attachments(&db, env.as_ref(), &mut cipher)
-        .await?;
+    attachments::hydrate_cipher_attachments(&db, env.as_ref(), &mut cipher).await?;
     db::touch_user_updated_at(&db, &claims.sub).await?;
 
     Ok(Json(cipher))
@@ -209,8 +208,7 @@ pub async fn update_cipher(
     .run()
     .await?;
 
-    attachments::hydrate_cipher_attachments(&db, env.as_ref(), &mut cipher)
-        .await?;
+    attachments::hydrate_cipher_attachments(&db, env.as_ref(), &mut cipher).await?;
     db::touch_user_updated_at(&db, &claims.sub).await?;
 
     Ok(Json(cipher))
@@ -257,8 +255,7 @@ pub async fn get_cipher(
     let cipher = fetch_cipher_for_user(&db, &id, &claims.sub).await?;
     let mut cipher: Cipher = cipher.into();
 
-    attachments::hydrate_cipher_attachments(&db, env.as_ref(), &mut cipher)
-        .await?;
+    attachments::hydrate_cipher_attachments(&db, env.as_ref(), &mut cipher).await?;
 
     Ok(Json(cipher))
 }
@@ -322,8 +319,7 @@ pub async fn update_cipher_partial(
     let cipher = fetch_cipher_for_user(&db, &id, user_id).await?;
     let mut cipher: Cipher = cipher.into();
 
-    attachments::hydrate_cipher_attachments(&db, env.as_ref(), &mut cipher)
-        .await?;
+    attachments::hydrate_cipher_attachments(&db, env.as_ref(), &mut cipher).await?;
 
     Ok(Json(cipher))
 }
@@ -406,7 +402,9 @@ pub async fn hard_delete_cipher(
 
     if attachments::attachments_enabled(env.as_ref()) {
         let bucket = attachments::require_bucket(env.as_ref())?;
-        let keys = attachments::list_attachment_keys_for_cipher_ids(&db, &[id.clone()], Some(&claims.sub)).await?;
+        let keys =
+            attachments::list_attachment_keys_for_cipher_ids(&db, &[id.clone()], Some(&claims.sub))
+                .await?;
         attachments::delete_r2_objects(&bucket, &keys).await?;
     }
 
@@ -500,8 +498,7 @@ pub async fn restore_cipher(
     .ok_or(AppError::NotFound("Cipher not found".to_string()))?;
 
     let mut cipher: Cipher = cipher_db.into();
-    attachments::hydrate_cipher_attachments(&db, env.as_ref(), &mut cipher)
-        .await?;
+    attachments::hydrate_cipher_attachments(&db, env.as_ref(), &mut cipher).await?;
 
     db::touch_user_updated_at(&db, &claims.sub).await?;
 
@@ -638,8 +635,7 @@ pub async fn create_cipher_simple(
     .run()
     .await?;
 
-    attachments::hydrate_cipher_attachments(&db, env.as_ref(), &mut cipher)
-        .await?;
+    attachments::hydrate_cipher_attachments(&db, env.as_ref(), &mut cipher).await?;
     db::touch_user_updated_at(&db, &claims.sub).await?;
 
     Ok(Json(cipher))

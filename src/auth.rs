@@ -26,7 +26,7 @@ pub struct Claims {
 pub struct AuthUser(
     pub String, // user_id
     #[allow(dead_code)] // email is not used in this simplified version
-    pub String, // email
+    pub  String, // email
 );
 
 impl FromRequestParts<Arc<Env>> for Claims {

@@ -26,7 +26,7 @@ use crate::{
 
 const ATTACHMENTS_BUCKET: &str = "ATTACHMENTS_BUCKET";
 const SIZE_LEEWAY_BYTES: i64 = 1024 * 1024; // 1 MiB
-const DEFAULT_ATTACHMENT_DOWNLOAD_TTL_SECS: i64 = 300; // 5 minutes
+const DEFAULT_ATTACHMENT_TTL_SECS: i64 = 300; // 5 minutes
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -600,7 +600,7 @@ async fn fetch_attachment(db: &D1Database, attachment_id: &str) -> Result<Attach
 
 async fn load_attachment_map(
     db: &D1Database,
-    cipher_ids: &[String]
+    cipher_ids: &[String],
 ) -> Result<HashMap<String, Vec<AttachmentResponse>>, AppError> {
     if cipher_ids.is_empty() {
         return Ok(HashMap::new());
@@ -766,22 +766,22 @@ fn jwt_secret(env: &Env) -> Result<String, AppError> {
 }
 
 fn download_ttl_secs(env: &Env) -> Result<i64, AppError> {
-    match env.var("ATTACHMENT_DOWNLOAD_TTL_SECS") {
+    match env.var("ATTACHMENT_TTL_SECS") {
         Ok(v) => {
             let raw = v.to_string();
             let ttl = raw.parse::<i64>().map_err(|err| {
-                log::error!("Invalid ATTACHMENT_DOWNLOAD_TTL_SECS '{}': {}", raw, err);
+                log::error!("Invalid ATTACHMENT_TTL_SECS '{}': {}", raw, err);
                 AppError::Internal
             })?;
 
             if ttl <= 0 {
-                log::error!("ATTACHMENT_DOWNLOAD_TTL_SECS '{}' must be positive", raw);
+                log::error!("ATTACHMENT_TTL_SECS '{}' must be positive", raw);
                 return Err(AppError::Internal);
             }
 
             Ok(ttl)
         }
-        Err(_) => Ok(DEFAULT_ATTACHMENT_DOWNLOAD_TTL_SECS),
+        Err(_) => Ok(DEFAULT_ATTACHMENT_TTL_SECS),
     }
 }
 
